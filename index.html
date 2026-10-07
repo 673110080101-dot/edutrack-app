@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduTrack - ระบบส่งงานและบันทึกคะแนน (ระดับ ป.1 - ปวส./อนุปริญญา)</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Vue 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Google Font (Prompt) -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- html2pdf.js CDN for PDF Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #f8fafc;
+        }
+        [v-cloak] { display: none !important; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Printable PDF Styling */
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+        }
+    </style>
+</head>
+<body class="text-slate-800 flex flex-col min-h-screen">
+
+    <div id="app" v-cloak class="min-h-screen flex flex-col">
+
+        <!-- Toast Notification Container -->
+        <div class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+            <div v-for="toast in toasts" :key="toast.id" 
+                 :class="[
+                     'p-4 rounded-xl shadow-lg border text-sm font-medium flex items-center justify-between transition-all duration-300 pointer-events-auto',
+                     toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-500' : 
+                     toast.type === 'error' ? 'bg-rose-600 text-white border-rose-500' : 'bg-indigo-600 text-white border-indigo-500'
+                 ]">
+                <div class="flex items-center gap-2.5">
+                    <i :class="toast.type === 'success' ? 'fa-solid fa-circle-check' : toast.type === 'error' ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-circle-info'"></i>
+                    <span>{{ toast.message }}</span>
+                </div>
+                <button @click="removeToast(toast.id)" class="text-white/80 hover:text-white ml-3">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        <div v-if="!isLoggedIn" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-700 via-purple-700 to-pink-600">
+            <div class="bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl p-6 md:p-10 w-full max-w-md my-auto border border-white/20">
+                
+                <!-- Logo & Brand Header -->
+                <div class="text-center mb-6">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl text-3xl mb-3 shadow-inner">
+                        <i class="fa-solid fa-graduation-cap"></i>
+                    </div>
+                    <h1 class="text-3xl font-extrabold text-slate-800 tracking-tight">EduTrack</h1>
+                    <p class="text-slate-500 text-xs md:text-sm mt-1 font-medium">ระบบติดตามการส่งงานและคะแนนทุกระดับชั้น (ป.1 - ปวส.)</p>
+                </div>
+
+                <!-- Auth Tabs -->
+                <div class="flex bg-slate-100 p-1 rounded-xl mb-6 text-xs font-semibold">
+                    <button @click="switchAuthMode('login')" :class="authMode === 'login' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="flex-1 py-2 rounded-lg transition">
+                        เข้าสู่ระบบ
+                    </button>
+                    <button @click="switchAuthMode('register')" :class="authMode === 'register' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="flex-1 py-2 rounded-lg transition">
+                        ลงทะเบียนใหม่
+                    </button>
+                </div>
+
+                <!-- LOGIN FORM -->
+                <form v-if="authMode === 'login'" @submit.prevent="handleLogin" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">อีเมลผู้ใช้งาน</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-envelope absolute left-3.5 top-3.5 text-slate-400"></i>
+                            <input v-model="loginForm.email" type="email" placeholder="teacher@edutrack.com" required class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">รหัสผ่าน</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-400"></i>
+                            <input v-model="loginForm.password" type="password" placeholder="••••••••" required class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-200 text-sm flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
+                    </button>
+
+                    <!-- Fast Quick-Login Demo Buttons -->
+                    <div class="pt-5 border-t border-slate-100">
+                        <p class="text-xs text-center font-semibold text-slate-400 mb-3">⚡ ทดสอบระบบด้วยบัญชีสาธิต (Quick Demo):</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <button type="button" @click="quickLogin('teacher')" class="py-2 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs rounded-xl font-medium transition flex items-center justify-center gap-1 border border-indigo-200">
+                                <i class="fa-solid fa-chalkboard-user"></i> ครูผู้สอน
+                            </button>
+                            <button type="button" @click="quickLogin('student')" class="py-2 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs rounded-xl font-medium transition flex items-center justify-center gap-1 border border-emerald-200">
+                                <i class="fa-solid fa-user-graduate"></i> นักเรียน
+                            </button>
+                            <button type="button" @click="quickLogin('admin')" class="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded-xl font-medium transition flex items-center justify-center gap-1 border border-slate-300">
+                                <i class="fa-solid fa-user-gear"></i> Admin
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- REGISTER FORM -->
+                <form v-else @submit.prevent="handleRegister" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">ชื่อ-นามสกุล</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-user absolute left-3.5 top-3.5 text-slate-400"></i>
+                            <input v-model="registerForm.name" type="text" placeholder="นางสาวใจดี สีชมพู" required class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">อีเมล</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-envelope absolute left-3.5 top-3.5 text-slate-400"></i>
+                            <input v-model="registerForm.email" type="email" placeholder="student3@edutrack.com" required class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">รหัสผ่าน</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-400"></i>
+                            <input v-model="registerForm.password" type="password" placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6" required class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">สถานะผู้ใช้งาน</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <label :class="registerForm.role === 'student' ? 'border-indigo-600 bg-indigo-50 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600'" class="flex items-center justify-center p-2.5 rounded-xl border cursor-pointer text-xs transition">
+                                <input type="radio" v-model="registerForm.role" value="student" class="sr-only">
+                                <i class="fa-solid fa-user-graduate mr-1.5"></i> นักเรียน
+                            </label>
+                            <label :class="registerForm.role === 'teacher' ? 'border-indigo-600 bg-indigo-50 text-indigo-700 font-bold' : 'border-slate-200 text-slate-600'" class="flex items-center justify-center p-2.5 rounded-xl border cursor-pointer text-xs transition">
+                                <input type="radio" v-model="registerForm.role" value="teacher" class="sr-only">
+                                <i class="fa-solid fa-chalkboard-user mr-1.5"></i> ครูผู้สอน
+                            </label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-200 text-sm flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-user-plus"></i> สมัครสมาชิก
+                    </button>
+                </form>
+
+            </div>
+        </div>
+
+        <div v-else class="max-w-7xl mx-auto p-4 md:p-6 w-full flex-1 flex flex-col">
+            
+            <!-- Navbar Header -->
+            <header class="bg-white rounded-2xl shadow-sm p-4 md:p-5 mb-6 border border-slate-200 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4">
+                <div class="flex items-center justify-between lg:justify-start gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-2xl shadow-md shadow-indigo-100">
+                            <i class="fa-solid fa-graduation-cap"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+                                EduTrack
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">v3.0 All-Levels</span>
+                            </h1>
+                            <p class="text-xs text-slate-500">ระบบเก็บคะแนนและติดตามการส่งงานออนไลน์ (ป.1 - ปวส.)</p>
+                        </div>
+                    </div>
+
+                    <!-- Role Switch Indicator for Mobile -->
+                    <div class="lg:hidden flex items-center gap-2">
+                        <span class="text-xs px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-lg font-bold">
+                            {{ getRoleLabel(currentUser.role) }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <nav class="flex flex-wrap gap-1 bg-slate-100 p-1.5 rounded-xl text-xs font-semibold overflow-x-auto">
+                    <button @click="currentTab = 'dashboard'" :class="currentTab === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 whitespace-nowrap">
+                        <i class="fa-solid fa-chart-pie"></i> ภาพรวม
+                    </button>
+                    <button @click="currentTab = 'assignments'" :class="currentTab === 'assignments' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 whitespace-nowrap">
+                        <i class="fa-solid fa-book"></i> ภาระงานทั้งหมด
+                    </button>
+                    <button v-if="currentUser.role === 'teacher'" @click="currentTab = 'classroom'" :class="currentTab === 'classroom' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 whitespace-nowrap">
+                        <i class="fa-solid fa-check-to-slot"></i> ตรวจงานรายบุคคล
+                    </button>
+                    <button @click="currentTab = 'scores'" :class="currentTab === 'scores' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 whitespace-nowrap">
+                        <i class="fa-solid fa-table-list"></i> สรุปคะแนนวิชา & รายงาน
+                    </button>
+                    <button v-if="currentUser.role === 'admin'" @click="currentTab = 'admin'" :class="currentTab === 'admin' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'" class="px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 whitespace-nowrap">
+                        <i class="fa-solid fa-user-gear"></i> จัดการผู้ใช้
+                    </button>
+                </nav>
+
+                <!-- User Profile & Logout -->
+                <div class="flex items-center justify-between lg:justify-end gap-3 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+                    <div class="flex items-center gap-2.5">
+                        <img :src="currentUser.avatar" class="w-9 h-9 rounded-full border-2 border-indigo-200 bg-indigo-50" alt="Avatar">
+                        <div>
+                            <div class="text-xs font-bold text-slate-800">{{ currentUser.name }}</div>
+                            <div class="text-[10px] text-indigo-600 font-bold uppercase">{{ getRoleLabel(currentUser.role) }}</div>
+                        </div>
+                    </div>
+                    <button @click="handleLogout" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-semibold transition flex items-center gap-1 border border-rose-100">
+                        <i class="fa-solid fa-arrow-right-from-bracket"></i> <span class="hidden sm:inline">ออกจากระบบ</span>
+                    </button>
+                </div>
+            </header>
+
+            <main v-if="currentTab === 'dashboard'" class="space-y-6">
+                <!-- Welcome Banner -->
+                <div class="bg-gradient-to-r from-indigo-700 via-indigo-800 to-purple-800 rounded-3xl p-6 md:p-8 text-white shadow-lg relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div class="relative z-10">
+                        <span class="px-3 py-1 bg-white/20 backdrop-blur-md text-white rounded-full text-xs font-semibold mb-2 inline-block">
+                            <i class="fa-solid fa-user-shield mr-1"></i> เข้าสู่ระบบในสิทธิ์: {{ getRoleLabel(currentUser.role) }}
+                        </span>
+                        <h2 class="text-2xl md:text-3xl font-extrabold tracking-tight">สวัสดีครับ/ค่ะ, {{ currentUser.name }} 👋</h2>
+                        <p class="text-indigo-100 text-xs md:text-sm mt-1 max-w-xl">
+                            ระบบเก็บคะแนนและติดตามภาระงาน รองรับตั้งแต่ระดับประถมศึกษา มัธยมศึกษา ปวช. จนถึง ปวส./อนุปริญญา พร้อมระบบคัดกรองระดับชั้น
+                        </p>
+                    </div>
+                    <div class="relative z-10 flex gap-2">
+                        <button v-if="currentUser.role === 'teacher'" @click="openCreateAssignmentModal" class="px-4 py-2.5 bg-white text-indigo-700 hover:bg-indigo-50 font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-plus-circle text-indigo-600"></i> สั่งงานใหม่
+                        </button>
+                        <button v-if="currentUser.role === 'student'" @click="currentTab = 'assignments'" class="px-4 py-2.5 bg-white text-indigo-700 hover:bg-indigo-50 font-bold rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-indigo-600"></i> ตรวจสอบงานค้าง
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STUDENT ALERT BANNER: MISSING WORK -->
+                <div v-if="currentUser.role === 'student' && studentMissingCount > 0" 
+                     class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 text-amber-900 flex items-center justify-between gap-3 shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center text-xl shrink-0 font-bold">
+                            <i class="fa-solid fa-bell"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-sm">คุณมีภาระงานค้างส่งสะสมทั้งหมด <span class="text-rose-600 font-extrabold text-base">{{ studentMissingCount }}</span> รายการ!</h4>
+                            <p class="text-xs text-amber-700">กรุณาตรวจสอบกำหนดส่งงานและอัปโหลดส่งไฟล์งานให้เรียบร้อย</p>
+                        </div>
+                    </div>
+                    <button @click="currentTab = 'assignments'; filterStatus = 'missing'" class="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shrink-0 whitespace-nowrap">
+                        ดูงานค้างทั้งหมด ➔
+                    </button>
+                </div>
+
+                <!-- GLOBAL LEVEL FILTER TOOLBAR -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 bg-indigo-600 rounded-full"></span>
+                        <span class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">เลือกระดับชั้นเพื่อกรองข้อมูล:</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                        <button @click="filterLevel = 'all'; filterSubject = 'all'" 
+                                :class="filterLevel === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                                class="px-3 py-1.5 rounded-xl text-xs font-bold transition">
+                            ทุกระดับชั้น
+                        </button>
+                        <button v-for="lvl in levelsData" :key="lvl.id" 
+                                @click="filterLevel = lvl.id; filterSubject = 'all'"
+                                :class="filterLevel === lvl.id ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                                class="px-3 py-1.5 rounded-xl text-xs font-bold transition">
+                            {{ lvl.shortName }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STATS OVERVIEW CARDS (CLICKABLE) -->
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
+                            <i class="fa-solid fa-chart-simple text-indigo-600"></i> สรุปสถิติสถานะการส่งงาน (กดคลิกการ์ดเพื่อกรองข้อมูล)
+                        </h3>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        
+                        <!-- Total Card -->
+                        <div @click="filterAssignmentsByStat('all')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition cursor-pointer group">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-slate-400 text-xs font-bold uppercase">ภาระงานทั้งหมด</div>
+                                    <div class="text-2xl font-black text-slate-800 mt-1">{{ filteredAssignments.length }} งาน</div>
+                                </div>
+                                <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-xl group-hover:scale-110 transition">
+                                    <i class="fa-solid fa-folder-open"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3 text-[11px] text-indigo-600 font-semibold flex items-center justify-between">
+                                <span>ดูงานทั้งหมด</span>
+                                <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                            </div>
+                        </div>
+
+                        <!-- On-time Card -->
+                        <div @click="filterAssignmentsByStat('ontime')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-300 transition cursor-pointer group">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-slate-400 text-xs font-bold uppercase">ส่งตรงเวลา</div>
+                                    <div class="text-2xl font-black text-emerald-600 mt-1">{{ totalOnTimeSubmissions }} รายการ</div>
+                                </div>
+                                <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-xl group-hover:scale-110 transition">
+                                    <i class="fa-solid fa-circle-check"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3 text-[11px] text-emerald-600 font-semibold flex items-center justify-between">
+                                <span>ดูเฉพาะงานตรงเวลา</span>
+                                <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                            </div>
+                        </div>
+
+                        <!-- Late Card -->
+                        <div @click="filterAssignmentsByStat('late')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-amber-300 transition cursor-pointer group">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-slate-400 text-xs font-bold uppercase">ส่งช้ากว่ากำหนด</div>
+                                    <div class="text-2xl font-black text-amber-500 mt-1">{{ totalLateSubmissions }} รายการ</div>
+                                </div>
+                                <div class="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center text-xl group-hover:scale-110 transition">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3 text-[11px] text-amber-600 font-semibold flex items-center justify-between">
+                                <span>ดูเฉพาะงานส่งช้า</span>
+                                <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                            </div>
+                        </div>
+
+                        <!-- Missing Card -->
+                        <div @click="filterAssignmentsByStat('missing')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-rose-300 transition cursor-pointer group">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-slate-400 text-xs font-bold uppercase">ยังไม่ได้ส่ง / ค้างส่ง</div>
+                                    <div class="text-2xl font-black text-rose-500 mt-1">{{ totalMissingSubmissions }} รายการ</div>
+                                </div>
+                                <div class="w-12 h-12 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center text-xl group-hover:scale-110 transition">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3 text-[11px] text-rose-600 font-semibold flex items-center justify-between">
+                                <span>ดูงานค้างส่ง</span>
+                                <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- STUDENT SUBJECT SCORE SUMMARY CARDS -->
+                <div v-if="currentUser.role === 'student'" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-award text-indigo-600"></i> สรุปผลคะแนนรวมรายวิชาของคุณ
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div v-for="subj in activeSubjectsList" :key="subj" class="p-4 rounded-xl border border-slate-100 bg-slate-50/80 hover:bg-white hover:border-indigo-200 transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="px-2.5 py-1 bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs">{{ subj }}</span>
+                                <span class="text-xs font-extrabold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                    เกรด {{ getStudentSubjectGrade(currentUser.email, subj).grade }}
+                                </span>
+                            </div>
+                            <div class="mt-3 flex justify-between items-end">
+                                <div>
+                                    <span class="text-xs text-slate-400 block font-semibold">คะแนนรวมที่ได้</span>
+                                    <span class="text-xl font-black text-indigo-600">
+                                        {{ getStudentSubjectGrade(currentUser.email, subj).earned }} / {{ getStudentSubjectGrade(currentUser.email, subj).max }}
+                                    </span>
+                                </div>
+                                <span class="text-xs font-bold text-slate-600">
+                                    {{ getStudentSubjectGrade(currentUser.email, subj).percentage.toFixed(1) }}%
+                                </span>
+                            </div>
+                            <!-- Progress bar -->
+                            <div class="w-full bg-slate-200 h-2 rounded-full mt-2 overflow-hidden">
+                                <div class="bg-indigo-600 h-full rounded-full transition-all duration-500" 
+                                     :style="{ width: Math.min(100, getStudentSubjectGrade(currentUser.email, subj).percentage) + '%' }"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RECENT ASSIGNMENTS TABLE WITH LEVEL & SUBJECT DRILL DOWN -->
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                        <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-indigo-600"></i> รายการภาระงานตามระดับชั้น (กดคลิกงานเพื่อดูหรือส่งงาน)
+                        </h3>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <select v-model="filterSubject" class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold">
+                                <option value="all">ทุกรายวิชา</option>
+                                <option v-for="subj in activeSubjectsList" :key="subj" :value="subj">{{ subj }}</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-50 text-slate-500 uppercase border-y border-slate-100 font-bold">
+                                <tr>
+                                    <th class="py-3 px-4">ระดับชั้น</th>
+                                    <th class="py-3 px-4">รายวิชา</th>
+                                    <th class="py-3 px-4">หัวข้อ / คำสั่งงาน</th>
+                                    <th class="py-3 px-4">กำหนดส่ง</th>
+                                    <th class="py-3 px-4">คะแนนเต็ม</th>
+                                    <th class="py-3 px-4">สถานะส่งงาน</th>
+                                    <th class="py-3 px-4 text-center">การจัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-for="item in filteredAssignments" :key="item.id" class="hover:bg-slate-50 transition">
+                                    <td class="py-3.5 px-4">
+                                        <span class="px-2 py-0.5 bg-purple-50 text-purple-700 font-bold rounded-lg border border-purple-100 text-[10px]">
+                                            {{ getLevelShortName(item.levelId) }}
+                                        </span>
+                                    </td>
+                                    <td class="py-3.5 px-4 font-bold text-indigo-600">
+                                        <span class="px-2.5 py-1 bg-indigo-50 rounded-lg border border-indigo-100 inline-block">
+                                            {{ item.subject }}
+                                        </span>
+                                    </td>
+                                    <td class="py-3.5 px-4 font-semibold text-slate-800">
+                                        {{ item.title }}
+                                        <p class="text-[11px] text-slate-400 font-normal line-clamp-1 mt-0.5">{{ item.description }}</p>
+                                    </td>
+                                    <td class="py-3.5 px-4 text-slate-500 whitespace-nowrap">
+                                        <i class="fa-regular fa-clock mr-1 text-slate-400"></i>{{ formatThaiDateTime(item.dueDate) }}
+                                    </td>
+                                    <td class="py-3.5 px-4 font-black text-slate-700">{{ item.maxScore }} คะแนน</td>
+                                    <td class="py-3.5 px-4 whitespace-nowrap">
+                                        <!-- For Teacher -->
+                                        <template v-if="currentUser.role === 'teacher'">
+                                            <span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-full text-[11px]">
+                                                ส่งแล้ว {{ getAssignmentSubmissionsCount(item.id) }} / {{ getStudentCount() }} คน
+                                            </span>
+                                        </template>
+                                        <!-- For Student -->
+                                        <template v-else-if="currentUser.role === 'student'">
+                                            <span v-if="getStudentSubmissionStatus(currentUser.email, item.id) === 'submitted_ontime'" 
+                                                  class="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full font-bold text-[11px]">
+                                                <i class="fa-solid fa-circle-check mr-1"></i>ส่งตรงเวลา
+                                            </span>
+                                            <span v-else-if="getStudentSubmissionStatus(currentUser.email, item.id) === 'submitted_late'" 
+                                                  class="px-2.5 py-1 bg-amber-100 text-amber-700 rounded-full font-bold text-[11px]">
+                                                <i class="fa-solid fa-clock mr-1"></i>ส่งช้ากว่ากำหนด
+                                            </span>
+                                            <span v-else class="px-2.5 py-1 bg-rose-100 text-rose-700 rounded-full font-bold text-[11px]">
+                                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>ยังไม่ส่ง
+                                            </span>
+                                        </template>
+                                        <template v-else>
+                                            <span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full font-bold text-[11px]">เปิดรับงาน</span>
+                                        </template>
+                                    </td>
+                                    <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                        <button v-if="currentUser.role === 'teacher'" @click="openClassroomDetail(item)" 
+                                                class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition text-xs shadow-sm inline-flex items-center gap-1">
+                                            <i class="fa-solid fa-pen-to-square"></i> ตรวจงาน
+                                        </button>
+                                        <button v-else-if="currentUser.role === 'student'" @click="openSubmitWorkModal(item)" 
+                                                class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition text-xs shadow-sm inline-flex items-center gap-1">
+                                            <i class="fa-solid fa-upload"></i> {{ getStudentSubmission(currentUser.email, item.id) ? 'ดู/ส่งใหม่' : 'ส่งงาน' }}
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+
+            <main v-if="currentTab === 'assignments'" class="space-y-6">
+                <!-- Teacher Header Action -->
+                <div v-if="currentUser.role === 'teacher'" class="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800">การจัดการภาระงานและใบงานทุกระดับชั้น</h3>
+                        <p class="text-xs text-slate-500">สั่งงาน มอบหมายงาน กำหนดระดับชั้นและรายวิชาให้แก่นักเรียน</p>
+                    </div>
+                    <button @click="openCreateAssignmentModal" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-md flex items-center gap-2">
+                        <i class="fa-solid fa-square-plus text-base"></i> มอบหมายงานใหม่
+                    </button>
+                </div>
+
+                <!-- Assignment Filter Controls -->
+                <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs font-bold text-slate-500">ตัวกรอง:</span>
+                        
+                        <select v-model="filterLevel" @change="filterSubject = 'all'" class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold">
+                            <option value="all">ทุกระดับชั้น (ป.1 - ปวส.)</option>
+                            <option v-for="lvl in levelsData" :key="lvl.id" :value="lvl.id">{{ lvl.name }}</option>
+                        </select>
+
+                        <select v-model="filterSubject" class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold">
+                            <option value="all">ทุกรายวิชา</option>
+                            <option v-for="subj in activeSubjectsList" :key="subj" :value="subj">{{ subj }}</option>
+                        </select>
+
+                        <select v-model="filterStatus" class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold">
+                            <option value="all">ทุกสถานะการส่ง</option>
+                            <option value="missing">เฉพาะงานค้าง / ยังไม่ส่ง</option>
+                            <option value="submitted">เฉพาะงานที่ส่งแล้ว</option>
+                        </select>
+                    </div>
+                    <span class="text-xs font-bold text-slate-400">พบทั้งหมด {{ filteredAssignments.length }} รายการ</span>
+                </div>
+
+                <!-- Assignment Grid Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <div v-for="item in filteredAssignments" :key="item.id" 
+                         class="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between relative group">
+                        
+                        <div>
+                            <div class="flex justify-between items-start mb-2 gap-1">
+                                <span class="px-2 py-0.5 bg-purple-100 text-purple-800 font-bold rounded-md text-[10px] shrink-0">
+                                    {{ getLevelShortName(item.levelId) }}
+                                </span>
+                                <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-lg text-xs border border-indigo-100">
+                                    {{ item.subject }}
+                                </span>
+                            </div>
+
+                            <h4 class="font-extrabold text-slate-800 text-base mb-2 group-hover:text-indigo-600 transition">{{ item.title }}</h4>
+                            <p class="text-xs text-slate-500 mb-4 line-clamp-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                {{ item.description || 'ไม่มีคำอธิบายเพิ่มเติม' }}
+                            </p>
+                        </div>
+
+                        <div>
+                            <div class="flex items-center justify-between pt-3 border-t border-slate-100 mb-3 text-xs">
+                                <span class="font-bold text-slate-400"><i class="fa-regular fa-clock mr-1"></i>กำหนดส่ง:</span>
+                                <span class="font-extrabold text-slate-700">{{ formatThaiDateTime(item.dueDate) }}</span>
+                            </div>
+
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold text-slate-400">คะแนนเต็ม:</span>
+                                <span class="text-sm font-black text-indigo-600">{{ item.maxScore }} คะแนน</span>
+                            </div>
+
+                            <!-- Student View Buttons -->
+                            <div v-if="currentUser.role === 'student'" class="flex items-center justify-between gap-2">
+                                <div class="text-xs">
+                                    <span v-if="getStudentSubmissionStatus(currentUser.email, item.id) === 'submitted_ontime'" class="text-emerald-600 font-bold flex items-center gap-1">
+                                        <i class="fa-solid fa-circle-check"></i> ส่งตรงเวลา
+                                    </span>
+                                    <span v-else-if="getStudentSubmissionStatus(currentUser.email, item.id) === 'submitted_late'" class="text-amber-600 font-bold flex items-center gap-1">
+                                        <i class="fa-solid fa-clock"></i> ส่งช้ากว่ากำหนด
+                                    </span>
+                                    <span v-else class="text-rose-600 font-bold flex items-center gap-1">
+                                        <i class="fa-solid fa-triangle-exclamation"></i> ค้างส่ง
+                                    </span>
+                                </div>
+                                <button @click="openSubmitWorkModal(item)" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1">
+                                    <i class="fa-solid fa-upload"></i> {{ getStudentSubmission(currentUser.email, item.id) ? 'ดู/แก้ไขไฟล์' : 'ส่งงาน' }}
+                                </button>
+                            </div>
+
+                            <!-- Teacher View Buttons -->
+                            <div v-if="currentUser.role === 'teacher'" class="flex items-center justify-between gap-2">
+                                <span class="text-xs text-slate-500 font-semibold">
+                                    ส่งแล้ว {{ getAssignmentSubmissionsCount(item.id) }} คน
+                                </span>
+                                <div class="flex items-center gap-1">
+                                    <button @click="deleteAssignment(item.id)" class="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition" title="ลบงาน">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                    <button @click="openClassroomDetail(item)" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-1">
+                                        <i class="fa-solid fa-square-check"></i> ตรวจงาน
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </main>
+
+            <main v-if="currentTab === 'classroom' && currentUser.role === 'teacher'" class="space-y-6">
+                <!-- Select Assignment Header -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <span class="text-xs font-bold text-indigo-600 uppercase tracking-wider">ห้องตรวจและติดตามงานรายบุคคล</span>
+                        <h3 class="text-lg font-black text-slate-800 mt-0.5">
+                            {{ selectedAssignmentForGrading ? selectedAssignmentForGrading.title : 'เลือกภาระงานที่ต้องการตรวจ' }}
+                        </h3>
+                    </div>
+                    <div class="w-full md:w-auto">
+                        <select v-model="selectedAssignmentId" @change="onSelectAssignmentForGrading" class="w-full md:w-80 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option v-for="ass in assignments" :key="ass.id" :value="ass.id">
+                                [{{ getLevelShortName(ass.levelId) }}] {{ ass.subject }} - {{ ass.title }}
+                            </option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Classroom Submissions Filter & Stats Bar -->
+                <div v-if="selectedAssignmentForGrading" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <button @click="gradingSubmissionFilter = 'all'" 
+                            :class="gradingSubmissionFilter === 'all' ? 'ring-2 ring-indigo-500 bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'"
+                            class="p-3.5 rounded-2xl border shadow-sm text-left transition">
+                        <span class="text-[11px] font-bold text-slate-400 block uppercase">นักเรียนทั้งหมด</span>
+                        <span class="text-xl font-black text-slate-800">{{ currentAssignmentStudentStats.total }} คน</span>
+                    </button>
+
+                    <button @click="gradingSubmissionFilter = 'submitted'" 
+                            :class="gradingSubmissionFilter === 'submitted' ? 'ring-2 ring-emerald-500 bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'"
+                            class="p-3.5 rounded-2xl border shadow-sm text-left transition">
+                        <span class="text-[11px] font-bold text-emerald-600 block uppercase">ส่งงานแล้ว</span>
+                        <span class="text-xl font-black text-emerald-600">{{ currentAssignmentStudentStats.submitted }} คน</span>
+                    </button>
+
+                    <button @click="gradingSubmissionFilter = 'missing'" 
+                            :class="gradingSubmissionFilter === 'missing' ? 'ring-2 ring-rose-500 bg-rose-50 border-rose-200' : 'bg-white border-slate-200'"
+                            class="p-3.5 rounded-2xl border shadow-sm text-left transition">
+                        <span class="text-[11px] font-bold text-rose-600 block uppercase">ยังไม่ได้ส่ง / งานค้าง</span>
+                        <span class="text-xl font-black text-rose-600">{{ currentAssignmentStudentStats.missing }} คน</span>
+                    </button>
+
+                    <button @click="gradingSubmissionFilter = 'graded'" 
+                            :class="gradingSubmissionFilter === 'graded' ? 'ring-2 ring-indigo-500 bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'"
+                            class="p-3.5 rounded-2xl border shadow-sm text-left transition">
+                        <span class="text-[11px] font-bold text-indigo-600 block uppercase">ตรวจคะแนนแล้ว</span>
+                        <span class="text-xl font-black text-indigo-600">{{ currentAssignmentStudentStats.graded }} คน</span>
+                    </button>
+                </div>
+
+                <!-- Detailed Submissions Student List Table -->
+                <div v-if="selectedAssignmentForGrading" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-users text-indigo-600"></i> รายชื่อนักเรียนกับการส่งงานหัวข้อนี้
+                        </h4>
+                        <span class="text-xs text-slate-400 font-semibold">คะแนนเต็ม: {{ selectedAssignmentForGrading.maxScore }} คะแนน</span>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-50 text-slate-500 uppercase border-y border-slate-100 font-bold">
+                                <tr>
+                                    <th class="py-3 px-4">ชื่อ-นามสกุล นักเรียน</th>
+                                    <th class="py-3 px-4">สถานะการส่งงาน</th>
+                                    <th class="py-3 px-4">เวลาที่ส่ง</th>
+                                    <th class="py-3 px-4">ไฟล์แนบที่อัปโหลด</th>
+                                    <th class="py-3 px-4">คะแนนที่ได้</th>
+                                    <th class="py-3 px-4 text-center">ตรวจให้คะแนน</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-for="std in filteredStudentsForGrading" :key="std.email" class="hover:bg-slate-50 transition">
+                                    <td class="py-3.5 px-4 font-bold text-slate-800">
+                                        <div class="flex items-center gap-2.5">
+                                            <img :src="std.avatar" class="w-7 h-7 rounded-full bg-slate-100" alt="Avatar">
+                                            <span>{{ std.name }}</span>
+                                        </div>
+                                    </td>
+
+                                    <td class="py-3.5 px-4 whitespace-nowrap">
+                                        <template v-if="std.submission">
+                                            <span v-if="std.submission.status === 'ตรงเวลา'" class="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[11px]">
+                                                <i class="fa-solid fa-circle-check mr-1"></i>ตรงเวลา
+                                            </span>
+                                            <span v-else class="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full font-bold text-[11px]">
+                                                <i class="fa-solid fa-clock mr-1"></i>ส่งช้ากว่ากำหนด
+                                            </span>
+                                        </template>
+                                        <template v-else>
+                                            <span class="px-2.5 py-1 bg-rose-100 text-rose-700 rounded-full font-bold text-[11px]">
+                                                <i class="fa-solid fa-circle-xmark mr-1"></i>ยังไม่ส่งงาน
+                                            </span>
+                                        </template>
+                                    </td>
+
+                                    <td class="py-3.5 px-4 text-slate-500 whitespace-nowrap">
+                                        {{ std.submission ? std.submission.submittedAt : '-' }}
+                                    </td>
+
+                                    <!-- Submitted File Download Link -->
+                                    <td class="py-3.5 px-4">
+                                        <template v-if="std.submission && std.submission.fileName">
+                                            <a :href="std.submission.fileData" :download="std.submission.fileName" 
+                                               class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold border border-indigo-200 text-[11px] transition">
+                                                <i class="fa-solid fa-download"></i> {{ std.submission.fileName }} ({{ std.submission.fileSize || 'FILE' }})
+                                            </a>
+                                        </template>
+                                        <template v-else>
+                                            <span class="text-slate-400 font-semibold text-[11px]">ไม่มีไฟล์แนบ</span>
+                                        </template>
+                                    </td>
+
+                                    <td class="py-3.5 px-4 whitespace-nowrap">
+                                        <template v-if="std.submission && std.submission.score !== null">
+                                            <span class="text-sm font-black text-indigo-600">{{ std.submission.score }}</span>
+                                            <span class="text-slate-400 text-xs"> / {{ selectedAssignmentForGrading.maxScore }}</span>
+                                        </template>
+                                        <template v-else>
+                                            <span class="text-slate-400 font-semibold">ยังไม่ให้คะแนน</span>
+                                        </template>
+                                    </td>
+
+                                    <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                        <button v-if="std.submission" @click="openGradingModal(std)" 
+                                                class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition text-xs shadow-sm flex items-center gap-1 mx-auto">
+                                            <i class="fa-solid fa-pen-to-square"></i> ให้คะแนน/ข้อติชม
+                                        </button>
+                                        <button v-else @click="sendReminderToast(std.name)" 
+                                                class="px-3 py-1.5 bg-slate-100 hover:bg-amber-100 text-amber-700 rounded-lg font-bold transition text-xs flex items-center gap-1 mx-auto">
+                                            <i class="fa-solid fa-bell"></i> เตือนให้ส่งงาน
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+
+            <main v-if="currentTab === 'scores'" class="space-y-6">
+                <!-- Export Controls & Header -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h3 class="text-lg font-black text-slate-800">สรุปภาพรวมคะแนนสะสมและรายงานเกรด</h3>
+                        <p class="text-xs text-slate-500">รายงานสรุปผลคะแนนรวมแยกตามระดับชั้นและรายวิชาของนักเรียน</p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <select v-model="filterLevel" class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-700">
+                            <option value="all">ทุกระดับชั้น (ป.1 - ปวส.)</option>
+                            <option v-for="lvl in levelsData" :key="lvl.id" :value="lvl.id">{{ lvl.name }}</option>
+                        </select>
+
+                        <button @click="exportToExcel" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-excel"></i> 🟢 ส่งออก Excel (.csv)
+                        </button>
+                        <button @click="exportToPDF" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-pdf"></i> 🔴 ส่งออกรายงาน PDF
+                        </button>
+                    </div>
+                </div>
+
+                <!-- printable PDF Container -->
+                <div id="pdf-report-template" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+                    <!-- Report Header -->
+                    <div class="text-center pb-4 border-b border-slate-200">
+                        <h2 class="text-xl font-black text-slate-800">รายงานสรุปคะแนนและผลการเรียน EduTrack</h2>
+                        <p class="text-xs text-slate-500 mt-1">
+                            ระดับชั้น: {{ filterLevel === 'all' ? 'ทุกระดับชั้น' : getLevelFullName(filterLevel) }} | 
+                            ข้อมูล ณ วันที่ {{ currentThaiDate }}
+                        </p>
+                    </div>
+
+                    <!-- Subject Score Summary Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-700 font-extrabold uppercase border-y border-slate-200">
+                                    <th class="py-3 px-4 border-r border-slate-200">ชื่อ-นามสกุล นักเรียน</th>
+                                    <th v-for="subj in activeSubjectsList" :key="subj" class="py-3 px-4 text-center border-r border-slate-200">
+                                        {{ subj }}
+                                    </th>
+                                    <th class="py-3 px-4 text-center bg-indigo-50 text-indigo-700 font-black">คะแนนรวมทั้งหมด</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                <tr v-for="std in getStudentUsers()" :key="std.email" class="hover:bg-slate-50">
+                                    <td class="py-3 px-4 font-bold text-slate-800 border-r border-slate-200">
+                                        {{ std.name }}
+                                        <span class="block text-[10px] text-slate-400 font-normal">{{ std.email }}</span>
+                                    </td>
+
+                                    <td v-for="subj in activeSubjectsList" :key="subj" class="py-3 px-4 text-center border-r border-slate-200">
+                                        <div class="font-extrabold text-slate-800">
+                                            {{ getStudentSubjectGrade(std.email, subj).earned }} / {{ getStudentSubjectGrade(std.email, subj).max }}
+                                        </div>
+                                        <span class="inline-block mt-0.5 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded font-bold text-[10px] border border-emerald-100">
+                                            เกรด {{ getStudentSubjectGrade(std.email, subj).grade }}
+                                        </span>
+                                    </td>
+
+                                    <td class="py-3 px-4 text-center bg-indigo-50/50">
+                                        <div class="text-sm font-black text-indigo-700">
+                                            {{ getStudentTotalScores(std.email).earned }} / {{ getStudentTotalScores(std.email).max }}
+                                        </div>
+                                        <span class="text-[11px] font-bold text-indigo-500">
+                                            ({{ getStudentTotalScores(std.email).percentage.toFixed(1) }}%)
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+
+            <main v-if="currentTab === 'admin' && currentUser.role === 'admin'" class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div class="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800">จัดการผู้ใช้งานในระบบ (Admin Control)</h3>
+                        <p class="text-xs text-slate-500">จัดการข้อมูลครู นักเรียน และสิทธิ์ในระบบ</p>
+                    </div>
+                    <button @click="openAddUserModal" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-sm">
+                        <i class="fa-solid fa-user-plus mr-1"></i> เพิ่มผู้ใช้งาน
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 text-slate-500 uppercase border-y border-slate-100 font-bold">
+                            <tr>
+                                <th class="py-3 px-4">ผู้ใช้งาน</th>
+                                <th class="py-3 px-4">อีเมล</th>
+                                <th class="py-3 px-4">สิทธิ์ผู้ใช้งาน</th>
+                                <th class="py-3 px-4 text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr v-for="u in usersList" :key="u.email" class="hover:bg-slate-50">
+                                <td class="py-3 px-4 font-bold text-slate-800">
+                                    <div class="flex items-center gap-2">
+                                        <img :src="u.avatar" class="w-7 h-7 rounded-full bg-slate-100" alt="Avatar">
+                                        <span>{{ u.name }}</span>
+                                    </div>
+                                </td>
+                                <td class="py-3 px-4 text-slate-500">{{ u.email }}</td>
+                                <td class="py-3 px-4">
+                                    <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase"
+                                          :class="u.role === 'teacher' ? 'bg-indigo-100 text-indigo-700' : u.role === 'admin' ? 'bg-slate-200 text-slate-800' : 'bg-emerald-100 text-emerald-700'">
+                                        {{ getRoleLabel(u.role) }}
+                                    </span>
+                                </td>
+                                <td class="py-3 px-4 text-center">
+                                    <button @click="deleteUser(u.email)" class="text-rose-600 hover:text-rose-800 font-bold text-xs p-1">
+                                        <i class="fa-solid fa-trash-can"></i> ลบ
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </main>
+
+        </div>
+
+        <div v-if="showCreateAssignmentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 relative">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <h3 class="font-extrabold text-slate-800 text-base flex items-center gap-2">
+                        <i class="fa-solid fa-square-plus text-indigo-600"></i> มอบหมายภาระงาน / สั่งงานใหม่
+                    </h3>
+                    <button @click="showCreateAssignmentModal = false" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <form @submit.prevent="saveNewAssignment" class="space-y-4 text-xs">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">หัวข้อ / ชื่อภาระงาน</label>
+                        <input v-model="newAssignmentForm.title" type="text" placeholder="เช่น ใบงานที่ 1 เรื่อง การเขียนโปรแกรมด้วย Python" required 
+                               class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">ระดับชั้น</label>
+                            <select v-model="newAssignmentForm.levelId" @change="onModalLevelChange" required class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium bg-white">
+                                <option v-for="lvl in levelsData" :key="lvl.id" :value="lvl.id">{{ lvl.name }}</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">รายวิชา</label>
+                            <select v-model="newAssignmentForm.subject" required class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium bg-white">
+                                <option v-for="s in modalSubjectsList" :key="s" :value="s">{{ s }}</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">คะแนนเต็ม</label>
+                            <input v-model.number="newAssignmentForm.maxScore" type="number" min="1" max="100" required 
+                                   class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">กำหนดวันและเวลาส่ง</label>
+                            <input v-model="newAssignmentForm.dueDate" type="datetime-local" required 
+                                   class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">คำอธิบายงาน / คำสั่งเพิ่มเติม</label>
+                        <textarea v-model="newAssignmentForm.description" rows="3" placeholder="ระบุรายละเอียดงาน..." 
+                                  class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium"></textarea>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                        <button type="button" @click="showCreateAssignmentModal = false" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold">ยกเลิก</button>
+                        <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition shadow-md">
+                            มอบหมายงาน
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div v-if="showSubmitModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 relative">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <div>
+                        <span class="text-[10px] font-bold text-indigo-600 uppercase">
+                            [{{ getLevelShortName(activeAssignmentForSubmit.levelId) }}] {{ activeAssignmentForSubmit.subject }}
+                        </span>
+                        <h3 class="font-extrabold text-slate-800 text-base">ส่งงาน: {{ activeAssignmentForSubmit.title }}</h3>
+                    </div>
+                    <button @click="showSubmitModal = false" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-4 text-xs">
+                    <!-- Assignment info -->
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+                        <p class="text-slate-600 font-medium mb-2">{{ activeAssignmentForSubmit.description }}</p>
+                        <div class="flex justify-between text-[11px] font-bold text-slate-500">
+                            <span><i class="fa-regular fa-clock mr-1"></i>กำหนดส่ง: {{ formatThaiDateTime(activeAssignmentForSubmit.dueDate) }}</span>
+                            <span class="text-indigo-600">คะแนนเต็ม {{ activeAssignmentForSubmit.maxScore }} คะแนน</span>
+                        </div>
+                    </div>
+
+                    <!-- Current Submission Status if any -->
+                    <div v-if="currentStudentSubmission" class="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-100 space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-indigo-900">งานที่คุณส่งแล้ว:</span>
+                            <span :class="currentStudentSubmission.status === 'ตรงเวลา' ? 'text-emerald-700 bg-emerald-100' : 'text-amber-700 bg-amber-100'" class="px-2.5 py-0.5 rounded-full font-bold text-[10px]">
+                                {{ currentStudentSubmission.status }}
+                            </span>
+                        </div>
+                        <div class="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                            <span class="truncate max-w-[200px]"><i class="fa-solid fa-file-arrow-up mr-1 text-indigo-600"></i>{{ currentStudentSubmission.fileName }}</span>
+                            <a :href="currentStudentSubmission.fileData" :download="currentStudentSubmission.fileName" class="text-indigo-600 hover:underline text-[11px]">ดาวน์โหลด</a>
+                        </div>
+                        <div v-if="currentStudentSubmission.score !== null" class="pt-2 border-t border-indigo-100 text-emerald-800 font-bold">
+                            คะแนนที่ได้รับ: {{ currentStudentSubmission.score }} / {{ activeAssignmentForSubmit.maxScore }} คะแนน
+                            <p v-if="currentStudentSubmission.feedback" class="text-slate-600 font-normal text-xs mt-0.5">ข้อเสนอแนะครู: "{{ currentStudentSubmission.feedback }}"</p>
+                        </div>
+                    </div>
+
+                    <!-- File Upload Input Field -->
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1.5">เลือกไฟล์งานจากคอมพิวเตอร์ (.pdf, .docx, .png, .zip)</label>
+                        <input type="file" @change="handleFileChange" class="w-full text-xs text-slate-500 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 border border-slate-200 rounded-xl cursor-pointer">
+                    </div>
+
+                    <div v-if="selectedFile" class="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-emerald-800 font-semibold flex items-center justify-between">
+                        <span class="truncate"><i class="fa-solid fa-file-circle-check mr-1"></i>{{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})</span>
+                        <span class="text-[10px] bg-emerald-200 px-2 py-0.5 rounded font-bold">พร้อมอัปโหลด</span>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                        <button type="button" @click="showSubmitModal = false" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold">ยกเลิก</button>
+                        <button type="button" @click="submitWork" :disabled="!selectedFile" 
+                                :class="selectedFile ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'"
+                                class="px-5 py-2 rounded-xl font-bold transition shadow-md flex items-center gap-1.5">
+                            <i class="fa-solid fa-paper-plane"></i> ยืนยันส่งงาน
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="showGradingModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 relative">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <div>
+                        <span class="text-[10px] font-bold text-indigo-600 uppercase">บันทึกคะแนนและประเมินผล</span>
+                        <h3 class="font-extrabold text-slate-800 text-base">นักเรียน: {{ gradingStudent.name }}</h3>
+                    </div>
+                    <button @click="showGradingModal = false" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <form @submit.prevent="saveGradeAndFeedback" class="space-y-4 text-xs">
+                    <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1">
+                        <div class="flex justify-between font-bold text-slate-700">
+                            <span>ไฟล์งานที่ส่ง:</span>
+                            <a :href="gradingStudent.submission.fileData" :download="gradingStudent.submission.fileName" class="text-indigo-600 hover:underline flex items-center gap-1">
+                                <i class="fa-solid fa-download"></i> ดาวน์โหลดไฟล์
+                            </a>
+                        </div>
+                        <p class="text-slate-500 font-medium">{{ gradingStudent.submission.fileName }} (เวลาส่ง: {{ gradingStudent.submission.submittedAt }})</p>
+                    </div>
+
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">ให้คะแนน (คะแนนเต็ม {{ selectedAssignmentForGrading.maxScore }})</label>
+                        <input v-model.number="gradeInputForm.score" type="number" min="0" :max="selectedAssignmentForGrading.maxScore" required 
+                               class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-extrabold text-indigo-600 text-base">
+                    </div>
+
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">ข้อเสนอแนะ / ความคิดเห็นจากครูผู้สอน</label>
+                        <textarea v-model="gradeInputForm.feedback" rows="3" placeholder="ระบุคำติชมเพื่อให้นักเรียนปรับปรุง..." 
+                                  class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium"></textarea>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                        <button type="button" @click="showGradingModal = false" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold">ยกเลิก</button>
+                        <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition shadow-md">
+                            บันทึกคะแนน
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+
+        createApp({
+            setup() {
+                // Auth & Navigation States
+                const isLoggedIn = ref(false);
+                const authMode = ref('login');
+                const currentTab = ref('dashboard');
+                const currentUser = ref(null);
+
+                // Toast Notifications
+                const toasts = ref([]);
+                const showToast = (message, type = 'success') => {
+                    const id = Date.now();
+                    toasts.value.push({ id, message, type });
+                    setTimeout(() => removeToast(id), 4000);
+                };
+                const removeToast = (id) => {
+                    toasts.value = toasts.value.filter(t => t.id !== id);
+                };
+
+                // Forms
+                const loginForm = reactive({ email: '', password: '' });
+                const registerForm = reactive({ name: '', email: '', password: '', role: 'student' });
+
+                const levelsData = [
+                    {
+                        id: 'p_lower',
+                        shortName: 'ป.1 - ป.3',
+                        name: 'ประถมศึกษาตอนต้น (ป.1 - ป.3)',
+                        subjects: ['ภาษาไทย', 'คณิตศาสตร์', 'วิทยาศาสตร์', 'ภาษาอังกฤษ', 'สังคมศึกษา', 'ศิลปะ', 'สุขศึกษา']
+                    },
+                    {
+                        id: 'p_upper',
+                        shortName: 'ป.4 - ป.6',
+                        name: 'ประถมศึกษาตอนปลาย (ป.4 - ป.6)',
+                        subjects: ['ภาษาไทย', 'คณิตศาสตร์', 'วิทยาศาสตร์และเทคโนโลยี', 'สังคมศึกษา', 'ประวัติศาสตร์', 'ภาษาอังกฤษ', 'การงานอาชีพ']
+                    },
+                    {
+                        id: 'm_lower',
+                        shortName: 'ม.1 - ม.3',
+                        name: 'มัธยมศึกษาตอนต้น (ม.1 - ม.3)',
+                        subjects: ['ภาษาไทยพื้นฐาน', 'คณิตศาสตร์พื้นฐาน', 'วิทยาศาสตร์และเทคโนโลยี', 'ประวัติศาสตร์', 'สังคมศึกษา', 'ภาษาอังกฤษ', 'วิทยาการคำนวณ', 'ศิลปะและดนตรี', 'การงานอาชีพ']
+                    },
+                    {
+                        id: 'm_upper_voc',
+                        shortName: 'ม.4-6 / ปวช.',
+                        name: 'มัธยมศึกษาตอนปลาย / ปวช. (ม.4 - ม.6 / ปวช.1-3)',
+                        subjects: ['ฟิสิกส์', 'เคมี', 'ชีววิทยา', 'แคลคูลัส', 'ภาษาไทยเพื่อการสื่อสาร', 'ภาษาอังกฤษฟัง-พูด', 'คอมพิวเตอร์กราฟิก', 'การบัญชีเบื้องต้น', 'ไฟฟ้ากำลัง']
+                    },
+                    {
+                        id: 'diploma',
+                        shortName: 'ปวส. / อนุปริญญา',
+                        name: 'อนุปริญญา / ปวส. (อนุปริญญาปีที่ 1-2 / ปวส.1-2)',
+                        subjects: ['ระบบฐานข้อมูล (Database Systems)', 'การเขียนโปรแกรมคอมพิวเตอร์ (Computer Programming)', 'สถิติและการวิจัยเบื้องต้น', 'ภาษาอังกฤษเพื่อการอาชีพ', 'การบริหารงานบุคคล', 'การจัดการการตลาด', 'วิศวกรรมซอฟต์แวร์']
+                    }
+                ];
+
+                // Initial Users Seed
+                const defaultUsers = [
+                    { name: 'นางสาวกนกวรรณ อุปนันท์', email: 'teacher@edutrack.com', password: 'password123', role: 'teacher', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kanokwan' },
+                    { name: 'นางสาวใจดี สีชมพู', email: 'student1@edutrack.com', password: 'password123', role: 'student', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jaidee' },
+                    { name: 'นายสมชาย มีวินัย', email: 'student2@edutrack.com', password: 'password123', role: 'student', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Somchai' },
+                    { name: 'ผู้ดูแลระบบ (Admin)', email: 'admin@edutrack.com', password: 'password123', role: 'admin', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin' }
+                ];
+
+                const usersList = reactive(JSON.parse(localStorage.getItem('edutrack_users_v3')) || defaultUsers);
+
+                // Initial Seed Assignments across all Levels
+                const defaultAssignments = [
+                    {
+                        id: 1,
+                        title: 'ใบงานที่ 1: การฝึกท่องสูตรคูณและบวกลบเลข',
+                        levelId: 'p_lower',
+                        subject: 'คณิตศาสตร์',
+                        maxScore: 10,
+                        dueDate: '2026-10-15T23:59',
+                        description: 'ให้นักเรียนทำแบบฝึกหัดทบทวนการบวกลบเลขไม่เกิน 1,000 พร้อมถ่ายรูปใบงานส่ง'
+                    },
+                    {
+                        id: 2,
+                        title: 'รายงานการสำรวจพืชและสัตว์ในบริเวณโรงเรียน',
+                        levelId: 'p_upper',
+                        subject: 'วิทยาศาสตร์และเทคโนโลยี',
+                        maxScore: 15,
+                        dueDate: '2026-10-18T18:00',
+                        description: 'จำแนกประเภทสิ่งมีชีวิตที่พบในสวนโรงเรียนพร้อมวาดภาพประกอบและเขียนอธิบาย'
+                    },
+                    {
+                        id: 3,
+                        title: 'โจทย์การเขียนอัลกอริทึมและผังงาน (Flowchart)',
+                        levelId: 'm_lower',
+                        subject: 'วิทยาการคำนวณ',
+                        maxScore: 20,
+                        dueDate: '2026-10-20T23:59',
+                        description: 'เขียนผังงานแสดงขั้นตอนการคำนวณหาพื้นที่รูปสามเหลี่ยมและสี่เหลี่ยมผืนผ้า'
+                    },
+                    {
+                        id: 4,
+                        title: 'การคำนวณกฎของนิวตันและการเคลื่อนที่แบบโพรเจกไทล์',
+                        levelId: 'm_upper_voc',
+                        subject: 'ฟิสิกส์',
+                        maxScore: 20,
+                        dueDate: '2026-10-22T23:59',
+                        description: 'แสดงวิธีทำโจทย์คำนวณหาความเร็วสูงสุดและระยะทางตกกระทบพื้นอย่างละเอียด'
+                    },
+                    {
+                        id: 5,
+                        title: 'มินิโปรเจกต์: การออกแบบ ER-Diagram และระบบฐานข้อมูลคลังสินค้า',
+                        levelId: 'diploma',
+                        subject: 'ระบบฐานข้อมูล (Database Systems)',
+                        maxScore: 30,
+                        dueDate: '2026-10-25T23:59',
+                        description: 'ออกแบบ Entity-Relationship Diagram พร้อมสร้างคำสั่ง SQL CREATE TABLE และ INSERT Data'
+                    }
+                ];
+
+                const assignments = reactive(JSON.parse(localStorage.getItem('edutrack_assignments_v3')) || defaultAssignments);
+
+                // Initial Submissions Seed
+                const defaultSubmissions = [
+                    {
+                        id: 101,
+                        assignmentId: 3,
+                        studentEmail: 'student1@edutrack.com',
+                        studentName: 'นางสาวใจดี สีชมพู',
+                        fileName: 'Flowchart_ใจดี.pdf',
+                        fileSize: '1.2 MB',
+                        fileData: 'data:text/plain;charset=utf-8,จำลองไฟล์งานผังงานFlowchart',
+                        submittedAt: '2026-10-12 14:30',
+                        status: 'ตรงเวลา',
+                        score: 18,
+                        feedback: 'เขียนสัญลักษณ์ Flowchart ได้ถูกต้องตามสัญลักษณ์มาตรฐาน'
+                    },
+                    {
+                        id: 102,
+                        assignmentId: 5,
+                        studentEmail: 'student1@edutrack.com',
+                        studentName: 'นางสาวใจดี สีชมพู',
+                        fileName: 'ERD_Database_Jaidee.pdf',
+                        fileSize: '2.5 MB',
+                        fileData: 'data:text/plain;charset=utf-8,จำลองไฟล์รายงานERD',
+                        submittedAt: '2026-10-14 09:15',
+                        status: 'ตรงเวลา',
+                        score: 28,
+                        feedback: 'ออกแบบ Primary Key และ Foreign Key ได้ชัดเจนสมบูรณ์มาก'
+                    }
+                ];
+
+                const submissions = reactive(JSON.parse(localStorage.getItem('edutrack_submissions_v3')) || defaultSubmissions);
+
+                watch(usersList, (val) => localStorage.setItem('edutrack_users_v3', JSON.stringify(val)), { deep: true });
+                watch(assignments, (val) => localStorage.setItem('edutrack_assignments_v3', JSON.stringify(val)), { deep: true });
+                watch(submissions, (val) => localStorage.setItem('edutrack_submissions_v3', JSON.stringify(val)), { deep: true });
+
+                // Filter States
+                const filterLevel = ref('all');
+                const filterSubject = ref('all');
+                const filterStatus = ref('all');
+
+                // Classroom View States
+                const selectedAssignmentId = ref(assignments[0] ? assignments[0].id : null);
+                const selectedAssignmentForGrading = computed(() => assignments.find(a => a.id === selectedAssignmentId.value) || assignments[0]);
+                const gradingSubmissionFilter = ref('all');
+
+                // Modals Controls
+                const showCreateAssignmentModal = ref(false);
+                const newAssignmentForm = reactive({
+                    title: '',
+                    levelId: 'm_lower',
+                    subject: '',
+                    maxScore: 10,
+                    dueDate: '',
+                    description: ''
+                });
+
+                const modalSubjectsList = computed(() => {
+                    const lvl = levelsData.find(l => l.id === newAssignmentForm.levelId);
+                    return lvl ? lvl.subjects : [];
+                });
+
+                const onModalLevelChange = () => {
+                    if (modalSubjectsList.value.length > 0) {
+                        newAssignmentForm.subject = modalSubjectsList.value[0];
+                    }
+                };
+
+                const showSubmitModal = ref(false);
+                const activeAssignmentForSubmit = ref({});
+                const selectedFile = ref(null);
+                const selectedFileDataUrl = ref('');
+
+                const showGradingModal = ref(false);
+                const gradingStudent = ref({});
+                const gradeInputForm = reactive({ score: 0, feedback: '' });
+
+                const activeSubjectsList = computed(() => {
+                    if (filterLevel.value === 'all') {
+                        // Return all unique subjects across levels
+                        const allSubj = [];
+                        levelsData.forEach(l => l.subjects.forEach(s => {
+                            if (!allSubj.includes(s)) allSubj.push(s);
+                        }));
+                        return allSubj;
+                    }
+                    const found = levelsData.find(l => l.id === filterLevel.value);
+                    return found ? found.subjects : [];
+                });
+
+                const filteredAssignments = computed(() => {
+                    return assignments.filter(item => {
+                        const matchLevel = filterLevel.value === 'all' || item.levelId === filterLevel.value;
+                        if (!matchLevel) return false;
+
+                        const matchSubj = filterSubject.value === 'all' || item.subject === filterSubject.value;
+                        if (!matchSubj) return false;
+
+                        if (filterStatus.value === 'all') return true;
+
+                        if (currentUser.value && currentUser.value.role === 'student') {
+                            const sub = submissions.find(s => s.assignmentId === item.id && s.studentEmail === currentUser.value.email);
+                            if (filterStatus.value === 'missing') return !sub;
+                            if (filterStatus.value === 'submitted') return !!sub;
+                        }
+                        return true;
+                    });
+                });
+
+                const studentMissingCount = computed(() => {
+                    if (!currentUser.value || currentUser.value.role !== 'student') return 0;
+                    return assignments.filter(item => {
+                        const sub = submissions.find(s => s.assignmentId === item.id && s.studentEmail === currentUser.value.email);
+                        return !sub;
+                    }).length;
+                });
+
+                const totalOnTimeSubmissions = computed(() => {
+                    return submissions.filter(s => s.status === 'ตรงเวลา').length;
+                });
+
+                const totalLateSubmissions = computed(() => {
+                    return submissions.filter(s => s.status === 'ส่งช้ากว่ากำหนด').length;
+                });
+
+                const totalMissingSubmissions = computed(() => {
+                    const totalStudents = usersList.filter(u => u.role === 'student').length;
+                    const totalExpected = assignments.length * totalStudents;
+                    return Math.max(0, totalExpected - submissions.length);
+                });
+
+                const currentAssignmentStudentStats = computed(() => {
+                    if (!selectedAssignmentForGrading.value) return { total: 0, submitted: 0, missing: 0, graded: 0 };
+                    const students = usersList.filter(u => u.role === 'student');
+                    const subs = submissions.filter(s => s.assignmentId === selectedAssignmentForGrading.value.id);
+                    const gradedCount = subs.filter(s => s.score !== null).length;
+
+                    return {
+                        total: students.length,
+                        submitted: subs.length,
+                        missing: Math.max(0, students.length - subs.length),
+                        graded: gradedCount
+                    };
+                });
+
+                const filteredStudentsForGrading = computed(() => {
+                    if (!selectedAssignmentForGrading.value) return [];
+                    const students = usersList.filter(u => u.role === 'student');
+
+                    return students.map(std => {
+                        const sub = submissions.find(s => s.assignmentId === selectedAssignmentForGrading.value.id && s.studentEmail === std.email);
+                        return {
+                            ...std,
+                            submission: sub || null
+                        };
+                    }).filter(item => {
+                        if (gradingSubmissionFilter.value === 'all') return true;
+                        if (gradingSubmissionFilter.value === 'submitted') return !!item.submission;
+                        if (gradingSubmissionFilter.value === 'missing') return !item.submission;
+                        if (gradingSubmissionFilter.value === 'graded') return item.submission && item.submission.score !== null;
+                        return true;
+                    });
+                });
+
+                const currentThaiDate = computed(() => {
+                    return new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+                });
+
+                const currentStudentSubmission = computed(() => {
+                    if (!currentUser.value || !activeAssignmentForSubmit.value) return null;
+                    return submissions.find(s => s.assignmentId === activeAssignmentForSubmit.value.id && s.studentEmail === currentUser.value.email);
+                });
+
+                const getLevelShortName = (levelId) => {
+                    const l = levelsData.find(item => item.id === levelId);
+                    return l ? l.shortName : 'ทั่วไป';
+                };
+
+                const getLevelFullName = (levelId) => {
+                    const l = levelsData.find(item => item.id === levelId);
+                    return l ? l.name : 'ทุกระดับชั้น';
+                };
+
+                const switchAuthMode = (mode) => { authMode.value = mode; };
+
+                const handleLogin = () => {
+                    const found = usersList.find(u => u.email === loginForm.email && u.password === loginForm.password);
+                    if (found) {
+                        currentUser.value = found;
+                        isLoggedIn.value = true;
+                        currentTab.value = 'dashboard';
+                        showToast(`ยินดีต้อนรับคุณ ${found.name}`, 'success');
+                    } else {
+                        showToast('อีเมลหรือรหัสผ่านไม่ถูกต้อง!', 'error');
+                    }
+                };
+
+                const quickLogin = (role) => {
+                    const found = usersList.find(u => u.role === role);
+                    if (found) {
+                        currentUser.value = found;
+                        isLoggedIn.value = true;
+                        currentTab.value = 'dashboard';
+                        showToast(`ล็อกอินด่วนสำเร็จในสิทธิ์: ${getRoleLabel(role)}`, 'success');
+                    }
+                };
+
+                const handleRegister = () => {
+                    if (usersList.some(u => u.email === registerForm.email)) {
+                        showToast('อีเมลนี้ถูกใช้งานไปแล้ว!', 'error');
+                        return;
+                    }
+
+                    const newUser = {
+                        name: registerForm.name,
+                        email: registerForm.email,
+                        password: registerForm.password,
+                        role: registerForm.role,
+                        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(registerForm.name)}`
+                    };
+
+                    usersList.push(newUser);
+                    showToast('ลงทะเบียนสำเร็จ! กรุณาเข้าสู่ระบบด้วยข้อมูลใหม่', 'success');
+                    switchAuthMode('login');
+                    loginForm.email = newUser.email;
+                };
+
+                const handleLogout = () => {
+                    isLoggedIn.value = false;
+                    currentUser.value = null;
+                    showToast('ออกจากระบบเรียบร้อยแล้ว');
+                };
+
+                const getRoleLabel = (role) => {
+                    const map = { teacher: 'ครูผู้สอน', student: 'นักเรียน', admin: 'ผู้ดูแลระบบ' };
+                    return map[role] || role;
+                };
+
+                const formatThaiDateTime = (dtStr) => {
+                    if (!dtStr) return '-';
+                    const date = new Date(dtStr);
+                    if (isNaN(date.getTime())) return dtStr;
+                    return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' +
+                           date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                };
+
+                const formatFileSize = (bytes) => {
+                    if (!bytes) return '0 B';
+                    const k = 1024;
+                    const sizes = ['B', 'KB', 'MB', 'GB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                };
+
+                const filterAssignmentsByStat = (stat) => {
+                    currentTab.value = 'assignments';
+                    if (stat === 'missing') filterStatus.value = 'missing';
+                    else if (stat === 'ontime' || stat === 'late') filterStatus.value = 'submitted';
+                    else filterStatus.value = 'all';
+                };
+
+                const getStudentUsers = () => usersList.filter(u => u.role === 'student');
+                const getStudentCount = () => getStudentUsers().length;
+
+                const getAssignmentSubmissionsCount = (assignmentId) => {
+                    return submissions.filter(s => s.assignmentId === assignmentId).length;
+                };
+
+                const getStudentSubmission = (email, assignmentId) => {
+                    return submissions.find(s => s.studentEmail === email && s.assignmentId === assignmentId);
+                };
+
+                const getStudentSubmissionStatus = (email, assignmentId) => {
+                    const sub = getStudentSubmission(email, assignmentId);
+                    if (!sub) return 'missing';
+                    return sub.status === 'ตรงเวลา' ? 'submitted_ontime' : 'submitted_late';
+                };
+
+                const openCreateAssignmentModal = () => {
+                    newAssignmentForm.title = '';
+                    newAssignmentForm.levelId = 'm_lower';
+                    newAssignmentForm.subject = levelsData[2].subjects[0];
+                    newAssignmentForm.maxScore = 10;
+                    newAssignmentForm.dueDate = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16);
+                    newAssignmentForm.description = '';
+                    showCreateAssignmentModal.value = true;
+                };
+
+                const saveNewAssignment = () => {
+                    const created = {
+                        id: Date.now(),
+                        title: newAssignmentForm.title,
+                        levelId: newAssignmentForm.levelId,
+                        subject: newAssignmentForm.subject,
+                        maxScore: newAssignmentForm.maxScore,
+                        dueDate: newAssignmentForm.dueDate,
+                        description: newAssignmentForm.description
+                    };
+                    assignments.unshift(created);
+                    showCreateAssignmentModal.value = false;
+                    showToast('สร้างและมอบหมายภาระงานสำเร็จ!', 'success');
+                };
+
+                const deleteAssignment = (id) => {
+                    const idx = assignments.findIndex(a => a.id === id);
+                    if (idx !== -1) {
+                        assignments.splice(idx, 1);
+                        showToast('ลบภาระงานเรียบร้อยแล้ว');
+                    }
+                };
+
+                // Submit Work Functions
+                const openSubmitWorkModal = (item) => {
+                    activeAssignmentForSubmit.value = item;
+                    selectedFile.value = null;
+                    selectedFileDataUrl.value = '';
+                    showSubmitModal.value = true;
+                };
+
+                const handleFileChange = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        selectedFile.value = file;
+                        const reader = new FileReader();
+                        reader.onload = (evt) => {
+                            selectedFileDataUrl.value = evt.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+
+                const submitWork = () => {
+                    if (!selectedFile.value || !currentUser.value) return;
+
+                    const now = new Date();
+                    const due = new Date(activeAssignmentForSubmit.value.dueDate);
+                    const isLate = now > due;
+
+                    const existingIndex = submissions.findIndex(s => s.assignmentId === activeAssignmentForSubmit.value.id && s.studentEmail === currentUser.value.email);
+
+                    const newSub = {
+                        id: existingIndex !== -1 ? submissions[existingIndex].id : Date.now(),
+                        assignmentId: activeAssignmentForSubmit.value.id,
+                        studentEmail: currentUser.value.email,
+                        studentName: currentUser.value.name,
+                        fileName: selectedFile.value.name,
+                        fileSize: formatFileSize(selectedFile.value.size),
+                        fileData: selectedFileDataUrl.value,
+                        submittedAt: formatThaiDateTime(now.toISOString()),
+                        status: isLate ? 'ส่งช้ากว่ากำหนด' : 'ตรงเวลา',
+                        score: existingIndex !== -1 ? submissions[existingIndex].score : null,
+                        feedback: existingIndex !== -1 ? submissions[existingIndex].feedback : ''
+                    };
+
+                    if (existingIndex !== -1) {
+                        submissions[existingIndex] = newSub;
+                    } else {
+                        submissions.push(newSub);
+                    }
+
+                    showSubmitModal.value = false;
+                    showToast('อัปโหลดและบันทึกส่งงานสำเร็จแล้ว!', 'success');
+                };
+
+                // Classroom & Grading Functions
+                const openClassroomDetail = (assignment) => {
+                    selectedAssignmentId.value = assignment.id;
+                    currentTab.value = 'classroom';
+                };
+
+                const onSelectAssignmentForGrading = () => {
+                    gradingSubmissionFilter.value = 'all';
+                };
+
+                const openGradingModal = (studentItem) => {
+                    gradingStudent.value = studentItem;
+                    gradeInputForm.score = studentItem.submission.score !== null ? studentItem.submission.score : selectedAssignmentForGrading.value.maxScore;
+                    gradeInputForm.feedback = studentItem.submission.feedback || '';
+                    showGradingModal.value = true;
+                };
+
+                const saveGradeAndFeedback = () => {
+                    const sub = submissions.find(s => s.assignmentId === selectedAssignmentForGrading.value.id && s.studentEmail === gradingStudent.value.email);
+                    if (sub) {
+                        sub.score = gradeInputForm.score;
+                        sub.feedback = gradeInputForm.feedback;
+                        showGradingModal.value = false;
+                        showToast(`บันทึกคะแนนให้แก่ ${gradingStudent.value.name} สำเร็จ!`, 'success');
+                    }
+                };
+
+                const sendReminderToast = (studentName) => {
+                    showToast(`ส่งการแจ้งเตือนตามงานไปยัง ${studentName} เรียบร้อยแล้ว`, 'info');
+                };
+
+                const calculateThaiGrade = (percentage) => {
+                    if (percentage >= 80) return '4';
+                    if (percentage >= 75) return '3.5';
+                    if (percentage >= 70) return '3';
+                    if (percentage >= 65) return '2.5';
+                    if (percentage >= 60) return '2';
+                    if (percentage >= 55) return '1.5';
+                    if (percentage >= 50) return '1';
+                    return '0';
+                };
+
+                const getStudentSubjectGrade = (email, subjectName) => {
+                    const subjAssignments = assignments.filter(a => {
+                        const matchLevel = filterLevel.value === 'all' || a.levelId === filterLevel.value;
+                        return matchLevel && a.subject === subjectName;
+                    });
+
+                    let earned = 0;
+                    let max = 0;
+
+                    subjAssignments.forEach(a => {
+                        max += a.maxScore;
+                        const sub = submissions.find(s => s.assignmentId === a.id && s.studentEmail === email);
+                        if (sub && sub.score !== null) {
+                            earned += sub.score;
+                        }
+                    });
+
+                    const percentage = max > 0 ? (earned / max) * 100 : 0;
+                    const grade = calculateThaiGrade(percentage);
+
+                    return { earned, max, percentage, grade };
+                };
+
+                const getStudentTotalScores = (email) => {
+                    let earned = 0;
+                    let max = 0;
+
+                    assignments.forEach(a => {
+                        const matchLevel = filterLevel.value === 'all' || a.levelId === filterLevel.value;
+                        if (matchLevel) {
+                            max += a.maxScore;
+                            const sub = submissions.find(s => s.assignmentId === a.id && s.studentEmail === email);
+                            if (sub && sub.score !== null) {
+                                earned += sub.score;
+                            }
+                        }
+                    });
+
+                    const percentage = max > 0 ? (earned / max) * 100 : 0;
+                    return { earned, max, percentage };
+                };
+
+                // Report Export Functions
+                const exportToExcel = () => {
+                    let csvContent = "\uFEFF"; // UTF-8 BOM for Thai encoding
+                    csvContent += "รายชื่อนักเรียน,อีเมล,";
+                    activeSubjectsList.value.forEach(s => {
+                        csvContent += `คะแนน${s},เกรด${s},`;
+                    });
+                    csvContent += "คะแนนรวมทั้งหมด,คิดเป็นเปอร์เซ็นต์\n";
+
+                    getStudentUsers().forEach(std => {
+                        csvContent += `"${std.name}","${std.email}",`;
+                        activeSubjectsList.value.forEach(s => {
+                            const res = getStudentSubjectGrade(std.email, s);
+                            csvContent += `"${res.earned}/${res.max}","${res.grade}",`;
+                        });
+                        const total = getStudentTotalScores(std.email);
+                        csvContent += `"${total.earned}/${total.max}","${total.percentage.toFixed(1)}%"\n`;
+                    });
+
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', `EduTrack_Report_${filterLevel.value}_${Date.now()}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    showToast('ส่งออกไฟล์ Excel (.csv) สำเร็จแล้ว!', 'success');
+                };
+
+                const exportToPDF = () => {
+                    const element = document.getElementById('pdf-report-template');
+                    const opt = {
+                        margin:       8,
+                        filename:     `EduTrack_Report_${filterLevel.value}_${Date.now()}.pdf`,
+                        image:        { type: 'jpeg', quality: 0.98 },
+                        html2canvas:  { scale: 2 },
+                        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
+                    };
+                    showToast('กำลังประมวลผลสร้างไฟล์ PDF...', 'info');
+                    html2pdf().set(opt).from(element).save().then(() => {
+                        showToast('ส่งออกไฟล์ PDF สำเร็จเรียบร้อย!', 'success');
+                    });
+                };
+
+                // Admin User Management
+                const openAddUserModal = () => {
+                    const name = prompt('กรอกชื่อ-นามสกุล ผู้ใช้งานใหม่:');
+                    if (!name) return;
+                    const email = prompt('กรอกอีเมล:');
+                    if (!email) return;
+                    const role = prompt('กรอกสถานะ (student / teacher / admin):', 'student');
+
+                    usersList.push({
+                        name,
+                        email,
+                        password: 'password123',
+                        role: role || 'student',
+                        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`
+                    });
+                    showToast('เพิ่มผู้ใช้งานใหม่เรียบร้อยแล้ว');
+                };
+
+                const deleteUser = (email) => {
+                    const idx = usersList.findIndex(u => u.email === email);
+                    if (idx !== -1) {
+                        usersList.splice(idx, 1);
+                        showToast('ลบผู้ใช้งานเรียบร้อยแล้ว');
+                    }
+                };
+
+                return {
+                    isLoggedIn,
+                    authMode,
+                    currentTab,
+                    currentUser,
+                    toasts,
+                    removeToast,
+                    loginForm,
+                    registerForm,
+                    usersList,
+                    levelsData,
+                    filterLevel,
+                    filterSubject,
+                    filterStatus,
+                    activeSubjectsList,
+                    assignments,
+                    submissions,
+                    filteredAssignments,
+                    studentMissingCount,
+                    totalOnTimeSubmissions,
+                    totalLateSubmissions,
+                    totalMissingSubmissions,
+                    selectedAssignmentId,
+                    selectedAssignmentForGrading,
+                    gradingSubmissionFilter,
+                    currentAssignmentStudentStats,
+                    filteredStudentsForGrading,
+                    currentThaiDate,
+                    currentStudentSubmission,
+                    showCreateAssignmentModal,
+                    newAssignmentForm,
+                    modalSubjectsList,
+                    onModalLevelChange,
+                    showSubmitModal,
+                    activeAssignmentForSubmit,
+                    selectedFile,
+                    showGradingModal,
+                    gradingStudent,
+                    gradeInputForm,
+                    getLevelShortName,
+                    getLevelFullName,
+                    switchAuthMode,
+                    handleLogin,
+                    quickLogin,
+                    handleRegister,
+                    handleLogout,
+                    getRoleLabel,
+                    formatThaiDateTime,
+                    formatFileSize,
+                    filterAssignmentsByStat,
+                    getStudentUsers,
+                    getStudentCount,
+                    getAssignmentSubmissionsCount,
+                    getStudentSubmission,
+                    getStudentSubmissionStatus,
+                    openCreateAssignmentModal,
+                    saveNewAssignment,
+                    deleteAssignment,
+                    openSubmitWorkModal,
+                    handleFileChange,
+                    submitWork,
+                    openClassroomDetail,
+                    onSelectAssignmentForGrading,
+                    openGradingModal,
+                    saveGradeAndFeedback,
+                    sendReminderToast,
+                    getStudentSubjectGrade,
+                    getStudentTotalScores,
+                    exportToExcel,
+                    exportToPDF,
+                    openAddUserModal,
+                    deleteUser
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
